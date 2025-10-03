@@ -1,4 +1,4 @@
-// server.js — Bitget forwarder com /auth, /contracts e /order (sem node-fetch)
+// server.js — Bitget forwarder (health, auth, contracts, leverage, order)
 import express from "express";
 import crypto from "crypto";
 
@@ -7,12 +7,12 @@ app.use(express.json());
 
 const {
   PORT = 3000,
-  FWD_TOKEN,             // token partilhado com o Worker
+  FWD_TOKEN,
   BG_API_KEY,
   BG_API_SECRET,
   BG_PASSPHRASE,
   PRODUCT = "umcbl",
-  BASE_URL = "https://api.bitget.com", // mainnet
+  BASE_URL = "https://api.bitget.com",
 } = process.env;
 
 function needToken(req, res, next) {
@@ -20,22 +20,14 @@ function needToken(req, res, next) {
   if (!FWD_TOKEN || t !== FWD_TOKEN) {
     return res.status(401).json({ ok: false, error: "bad token" });
   }
-  return next();
+  next();
 }
 
-function ts() {
-  // timestamp em segundos com milissegundos (ex.: 1720000000.123)
-  return (Date.now() / 1000).toFixed(3);
-}
-
+const ts = () => (Date.now() / 1000).toFixed(3);
 function sign({ timestamp, method, path, body = "" }) {
   const msg = `${timestamp}${method}${path}${body}`;
-  return crypto
-    .createHmac("sha256", BG_API_SECRET)
-    .update(msg)
-    .digest("base64");
+  return crypto.createHmac("sha256", BG_API_SECRET).update(msg).digest("base64");
 }
-
 function authHeaders({ method, path, body = "" }) {
   const timestamp = ts();
   const bodyStr = body ? JSON.stringify(body) : "";
@@ -49,13 +41,9 @@ function authHeaders({ method, path, body = "" }) {
   };
 }
 
-// Saúde simples
-app.get("/health", (_req, res) => {
-  res.type("text/plain").send("OK");
-});
+app.get("/health", (_req, res) => res.type("text/plain").send("OK"));
 
-// 🔐 Teste de credenciais: consulta conta de futures
-app.get("/auth", needToken, async (req, res) => {
+app.get("/auth", needToken, async (_req, res) => {
   try {
     const q = `productType=${encodeURIComponent(PRODUCT)}`;
     const path = `/api/mix/v1/account/account?${q}`;
@@ -63,16 +51,12 @@ app.get("/auth", needToken, async (req, res) => {
       method: "GET",
       headers: authHeaders({ method: "GET", path }),
     });
-    const text = await r.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = { raw: text }; }
-    return res.status(r.status).json({ ok: r.ok, status: r.status, data });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e) });
-  }
+    const txt = await r.text();
+    let data; try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
+    res.status(r.status).json({ ok: r.ok, status: r.status, data });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
 });
 
-// 📜 Lista de contracts
 app.get("/contracts", needToken, async (req, res) => {
   try {
     const product = req.query.product || PRODUCT;
@@ -82,16 +66,35 @@ app.get("/contracts", needToken, async (req, res) => {
       method: "GET",
       headers: authHeaders({ method: "GET", path }),
     });
-    const text = await r.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = { raw: text }; }
-    return res.status(r.status).json(data);
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e) });
-  }
+    const txt = await r.text();
+    let data; try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
+    res.status(r.status).json(data);
+  } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
 });
 
-// 🛒 Enviar ordem
+// NOVO: definir alavancagem
+app.post("/leverage", needToken, async (req, res) => {
+  try {
+    const { symbol, leverage, holdSide, marginCoin = "USDT" } = req.body || {};
+    const body = {
+      symbol,
+      productType: PRODUCT,
+      marginCoin,
+      leverage: String(leverage),
+      holdSide, // "long" ou "short"
+    };
+    const path = "/api/mix/v1/account/setLeverage";
+    const r = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: authHeaders({ method: "POST", path, body }),
+      body: JSON.stringify(body),
+    });
+    const txt = await r.text();
+    let data; try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
+    res.status(r.status).json({ ok: r.ok, status: r.status, data });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
+});
+
 app.post("/order", needToken, async (req, res) => {
   try {
     const body = req.body || {};
@@ -101,15 +104,10 @@ app.post("/order", needToken, async (req, res) => {
       headers: authHeaders({ method: "POST", path, body }),
       body: JSON.stringify(body),
     });
-    const text = await r.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = { raw: text }; }
-    return res.status(r.status).json({ ok: r.ok, status: r.status, data });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e) });
-  }
+    const txt = await r.text();
+    let data; try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
+    res.status(r.status).json({ ok: r.ok, status: r.status, data });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
 });
 
-app.listen(PORT, () => {
-  console.log(`bitget-forwarder live on :${PORT}`);
-});
+app.listen(PORT, () => console.log(`bitget-forwarder live on :${PORT}`));
