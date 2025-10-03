@@ -1,14 +1,13 @@
-// server.js — Bitget forwarder com /auth, /contracts e /order
+// server.js — Bitget forwarder com /auth, /contracts e /order (sem node-fetch)
 import express from "express";
 import crypto from "crypto";
-import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
 const {
   PORT = 3000,
-  FWD_TOKEN,             // token shared com o Worker
+  FWD_TOKEN,             // token partilhado com o Worker
   BG_API_KEY,
   BG_API_SECRET,
   BG_PASSPHRASE,
@@ -25,10 +24,8 @@ function needToken(req, res, next) {
 }
 
 function ts() {
-  // Bitget pede segundos com 3 casas (ms) ou ISO curto; ambos funcionam.
-  // Vamos usar segundos com milissegundos (ex.: 1700000000.123).
-  const n = Date.now();
-  return (n / 1000).toFixed(3);
+  // timestamp em segundos com milissegundos (ex.: 1720000000.123)
+  return (Date.now() / 1000).toFixed(3);
 }
 
 function sign({ timestamp, method, path, body = "" }) {
@@ -75,7 +72,7 @@ app.get("/auth", needToken, async (req, res) => {
   }
 });
 
-// 📜 Lista de contracts (cache a cargo do Worker)
+// 📜 Lista de contracts
 app.get("/contracts", needToken, async (req, res) => {
   try {
     const product = req.query.product || PRODUCT;
@@ -98,10 +95,6 @@ app.get("/contracts", needToken, async (req, res) => {
 app.post("/order", needToken, async (req, res) => {
   try {
     const body = req.body || {};
-    // Espera algo como:
-    // { symbol, marginCoin:"USDT", size, side, orderType:"market",
-    //   timeInForceValue:"normal", reduceOnly:false,
-    //   presetTakeProfitPrice, presetStopLossPrice, clientOid, leverage }
     const path = "/api/mix/v1/order/placeOrder";
     const r = await fetch(`${BASE_URL}${path}`, {
       method: "POST",
