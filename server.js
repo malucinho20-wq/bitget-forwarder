@@ -72,6 +72,27 @@ app.get("/contracts", needToken, async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
 });
 
+// === POSITIONS (single symbol) ===
+// GET /positions?token=...&symbol=CRVUSDT_UMCBL&marginCoin=USDT
+app.get("/positions", async (req, res) => {
+  try {
+    const { token, symbol, marginCoin = "USDT" } = req.query;
+    if (!token || token !== process.env.FWD_TOKEN) {
+      return res.status(401).json({ ok:false, error:"bad token" });
+    }
+    if (!symbol) return res.status(400).json({ ok:false, error:"missing symbol" });
+
+    // Bitget endpoint: single position (mix, umcbl)
+    // GET /api/mix/v1/position/singlePosition?symbol=XXX_UMCBL&marginCoin=USDT
+    const q = new URLSearchParams({ symbol, marginCoin }).toString();
+    const out = await bgSignedGET(`/api/mix/v1/position/singlePosition?${q}`);
+    // out: { code:"00000", data:{ ... } }
+    return res.json(out);
+  } catch (e) {
+    res.status(500).json({ ok:false, error:String(e) });
+  }
+});
+
 // NOVO: definir alavancagem
 app.post("/leverage", needToken, async (req, res) => {
   try {
