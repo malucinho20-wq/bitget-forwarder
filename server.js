@@ -1,12 +1,12 @@
 import express from "express";
 import cors from "cors";
 import crypto from "crypto";
-import fetch from "node-fetch";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ── VARIÁVEIS DE AMBIENTE ──────────────────────────────────────────────
 const FWD_TOKEN         = process.env.FWD_TOKEN || "";
 const BITGET_KEY        = process.env.BITGET_KEY || "";
 const BITGET_SECRET     = process.env.BITGET_SECRET || "";
@@ -14,7 +14,7 @@ const BITGET_PASSPHRASE = process.env.BITGET_PASSPHRASE || "";
 const PRODUCT           = (process.env.BITGET_PRODUCT || "umcbl").toLowerCase();
 const BITGET_BASE       = "https://api.bitget.com";
 
-// --- auth: aceita header x-fwd-token, Authorization: Bearer, ou ?token= ---
+// ── AUTH: aceita x-fwd-token, Authorization: Bearer, ou ?token= ─────────
 function checkAuth(req, res, next) {
   const hdr = req.headers["x-fwd-token"];
   const ber = (req.headers["authorization"] || "").replace(/^Bearer\s+/i, "");
@@ -24,6 +24,7 @@ function checkAuth(req, res, next) {
   next();
 }
 
+// ── Assinatura Bitget ───────────────────────────────────────────────────
 function sign(method, path, query = "", body = "") {
   const ts = (Date.now() / 1000).toFixed(3);
   const pre = ts + method.toUpperCase() + path + (query ? `?${query}` : "") + body;
@@ -31,9 +32,10 @@ function sign(method, path, query = "", body = "") {
   return { ts, sig };
 }
 
+// ── Health ──────────────────────────────────────────────────────────────
 app.get("/health", (req,res) => res.json({ ok:true, service:"bitget-forwarder", time:new Date().toISOString() }));
 
-// --- handlers reutilizáveis ---
+// ── Handlers ───────────────────────────────────────────────────────────
 async function handleContracts(req, res) {
   try {
     const path = "/api/mix/v1/market/contracts";
@@ -55,7 +57,7 @@ async function handleOrder(req, res) {
       symbol: body.symbol,
       marginCoin: body.marginCoin || "USDT",
       size: String(body.size),
-      side: body.side,
+      side: body.side,                              // "open_short" | "open_long"
       orderType: body.orderType || "market",
       timeInForceValue: body.timeInForceValue || "normal",
       reduceOnly: !!body.reduceOnly,
@@ -88,7 +90,7 @@ async function handleOrder(req, res) {
   }
 }
 
-// --- publica as duas variantes de rota: com e sem /api ---
+// ── Rotas com e sem /api (para compatibilidade com o Worker) ───────────
 app.get (["/contracts", "/api/contracts"], checkAuth, handleContracts);
 app.post(["/order",     "/api/order"    ], checkAuth, handleOrder);
 
